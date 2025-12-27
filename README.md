@@ -277,12 +277,12 @@ This project is licensed under the MIT License - see LICENSE file for details.
 
 ## 👨‍💻 Author
 
-Your Name / Organization
+Nidhin 
 
 ## 📧 Contact
 
-For questions or suggestions, please open an issue or contact the repository maintainer.
-
+For questions or suggestions, please contact me.
 ---
 
 **Made with ❤️ for better emergency care**
+
