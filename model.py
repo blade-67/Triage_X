@@ -1,136 +1,105 @@
+# ===============================
+# 1. Import Required Libraries
+# ===============================
+
 import pandas as pd
 import numpy as np
 import joblib
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
+from sklearn.metrics import classification_report, confusion_matrix
+
 from sklearn.impute import KNNImputer
-from imblearn.over_sampling import SMOTE
+
+from xgboost import XGBClassifier
+
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
+# ===============================
+# 2. Load Dataset
+# ===============================
 
-# Data importing
-df = pd.read_csv("ai_emergency_triage_dataset.csv")
+df = pd.read_csv("synthetic_500k_bias_safe.csv")
+
 print("Dataset shape:", df.shape)
-print("\nFirst few rows:")
 print(df.head())
 
-# Data preprocessing
-print("\n--- Data Preprocessing ---")
-print("Column names:", df.columns.tolist())
-print("Data types:\n", df.dtypes)
+# ===============================
+# 3. Split Features & Target
+# ===============================
 
-# Select features and target (adjust column name if needed)
-X = df.drop('triage_level', axis=1)  # Features
-y = df['triage_level']  # Target
+X = df.drop("triage_level", axis=1)
+y = df["triage_level"]
 
-print(f"\nFeatures shape: {X.shape}")
-print(f"Target shape: {y.shape}")
-print(f"Target distribution:\n{y.value_counts().sort_index()}")
+print("\nTarget distribution:")
+print(y.value_counts().sort_index())
 
-# Check for missing values
-print(f"\nMissing values:\n{X.isnull().sum()}")
+# ===============================
+# 4. Handle Missing Values
+# ===============================
 
-# Handle missing values using KNN Imputation (better for healthcare)
-print("\n--- Handling Missing Values ---")
-if X.isnull().sum().sum() > 0:
-    print("Using KNN Imputer (5 nearest neighbors)...")
-    imputer = KNNImputer(n_neighbors=5)
-    X = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
-    print("Missing values handled using KNN Imputation")
-else:
-    print("No missing values found in data")
+imputer = KNNImputer(n_neighbors=5)
+X = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
 
-# Split data
+# ===============================
+# 5. Train–Test Split
+# ===============================
+
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
 )
-print(f"\nTrain set: {X_train.shape}, Test set: {X_test.shape}")
-print(f"\nClass distribution BEFORE SMOTE:")
-print(y_train.value_counts().sort_index())
 
-# Handle class imbalance using SMOTE (Critical for healthcare!)
-print("\n--- Handling Class Imbalance ---")
-print("Applying SMOTE (Synthetic Minority Over-sampling Technique)...")
-smote = SMOTE(random_state=42)
-X_train, y_train = smote.fit_resample(X_train, y_train)
-print(f"Train set after SMOTE: {X_train.shape}")
-print(f"\nClass distribution AFTER SMOTE:")
-print(pd.Series(y_train).value_counts().sort_index())
+# ===============================
+# 6. Define XGBoost Model
+# ===============================
 
-# Train individual models
-print("\n--- Training Models ---")
-print("Training Logistic Regression...")
-model1 = LogisticRegression(max_iter=1000, random_state=42, class_weight='balanced')
-model1.fit(X_train, y_train)
+xgb_model = XGBClassifier(
+    n_estimators=300,
+    max_depth=7,
+    learning_rate=0.05,
 
-print("Training Random Forest...")
-model2 = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1, class_weight='balanced')
-model2.fit(X_train, y_train)
+    subsample=0.8,
+    colsample_bytree=0.8,
 
-# Create Voting Classifier (combines both models)
-print("Creating Voting Classifier...")
-voting_clf = VotingClassifier(
-    estimators=[('lr', model1), ('rf', model2)],
-    voting='soft'
+    objective="multi:softmax",
+    num_class=4,
+
+    eval_metric="mlogloss",
+    random_state=42,
+    n_jobs=-1
 )
-voting_clf.fit(X_train, y_train)
 
-# Predictions
-print("\n--- Evaluating Models ---")
-pred1 = model1.predict(X_test)
-pred2 = model2.predict(X_test)
-pred_voting = voting_clf.predict(X_test)
+# ===============================
+# 7. Train the Model
+# ===============================
 
-# Logistic Regression results
-print("\n1. LOGISTIC REGRESSION:")
-print(f"   Accuracy:  {accuracy_score(y_test, pred1):.4f}")
-print(f"   Precision: {precision_score(y_test, pred1, average='weighted'):.4f}")
-print(f"   Recall:    {recall_score(y_test, pred1, average='weighted'):.4f}")
-print(f"   F1-Score:  {f1_score(y_test, pred1, average='weighted'):.4f}")
-print(f"\n   Per-class metrics:")
-print(classification_report(y_test, pred1, digits=4))
+print("\nTraining XGBoost model...")
+xgb_model.fit(X_train, y_train)
+print("Training completed.")
 
-# Random Forest results
-print("\n2. RANDOM FOREST:")
-print(f"   Accuracy:  {accuracy_score(y_test, pred2):.4f}")
-print(f"   Precision: {precision_score(y_test, pred2, average='weighted'):.4f}")
-print(f"   Recall:    {recall_score(y_test, pred2, average='weighted'):.4f}")
-print(f"   F1-Score:  {f1_score(y_test, pred2, average='weighted'):.4f}")
-print(f"\n   Per-class metrics:")
-print(classification_report(y_test, pred2, digits=4))
+# ===============================
+# 8. Evaluate Model
+# ===============================
 
-# Voting Classifier results
-print("\n3. VOTING CLASSIFIER (Combined):")
-print(f"   Accuracy:  {accuracy_score(y_test, pred_voting):.4f}")
-print(f"   Precision: {precision_score(y_test, pred_voting, average='weighted'):.4f}")
-print(f"   Recall:    {recall_score(y_test, pred_voting, average='weighted'):.4f}")
-print(f"   F1-Score:  {f1_score(y_test, pred_voting, average='weighted'):.4f}")
-print(f"\n   Per-class metrics:")
-print(classification_report(y_test, pred_voting, digits=4))
+y_pred = xgb_model.predict(X_test)
 
-# Summary
-print("\n" + "="*50)
-print("BEST MODEL:")
-best_score = max(
-    accuracy_score(y_test, pred1),
-    accuracy_score(y_test, pred2),
-    accuracy_score(y_test, pred_voting)
-)
-if accuracy_score(y_test, pred_voting) == best_score:
-    print("✓ Voting Classifier (Combined) performs best!")
-elif accuracy_score(y_test, pred2) == best_score:
-    print("✓ Random Forest performs best!")
-else:
-    print("✓ Logistic Regression performs best!")
-print("="*50)
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred, digits=4))
 
-joblib.dump(model1, "model_lr.pkl", compress=3)
-joblib.dump(model2, "model_rf.pkl", compress=3)
-joblib.dump(voting_clf, "model_voting.pkl", compress=3)
-joblib.dump(imputer, "imputer.pkl", compress=3)
-joblib.dump(list(X.columns), "feature_columns.pkl", compress=3)
-print("✅ Models and preprocessing objects saved successfully!")
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred))
 
+# ===============================
+# 9. Save Model & Preprocessing
+# ===============================
+
+joblib.dump(xgb_model, "xgboost_triage_model.pkl")
+joblib.dump(imputer, "knn_imputer.pkl", compress=3)
+joblib.dump(list(X.columns), "feature_columns.pkl")
+
+print("\n✅ Model and preprocessing objects saved!")
